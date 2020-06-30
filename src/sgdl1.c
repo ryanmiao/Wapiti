@@ -66,9 +66,9 @@ typedef struct sgd_idx_s {
  *   and the formula on the middle of the page 480.
  */
 #define applypenalty(f) do {                               \
-	const double z = w[f];                             \
-	if      (z > 0.0) w[f] = max(0.0, z - (u + q[f])); \
-	else if (z < 0.0) w[f] = min(0.0, z + (u - q[f])); \
+	const float z = w[f];                             \
+	if      (z > 0.0) w[f] = max(0.0, z - (u + (float)q[f])); \
+	else if (z < 0.0) w[f] = min(0.0, z + (u - (float)q[f])); \
 	q[f] += w[f] - z;                                  \
 } while (false)
 
@@ -98,7 +98,8 @@ void trn_sgdl1(mdl_t *mdl) {
 	const uint32_t  B = mdl->reader->nbi;
 	const uint32_t  S = mdl->train->nseq;
 	const uint32_t  K = mdl->opt->maxiter;
-	      double   *w = mdl->theta;
+	      float *w = mdl->theta_f;
+	      double *w_d = mdl->theta;
 	// First we have to build and index who hold, for each sequences, the
 	// list of actives observations.
 	// The index is a simple table indexed by sequences number. Each entry
@@ -150,7 +151,7 @@ void trn_sgdl1(mdl_t *mdl) {
 	// of iteration, each of these going through all the sequences. For
 	// computing the decay, we will need to keep track of the number of
 	// already processed sequences, this is tracked by the <i> variable.
-	double u = 0.0;
+	float u = 0.0;
 	grd_st_t *grd_st = grd_stnew(mdl, g);
 	for (uint32_t k = 0, i = 0; k < K && !uit_stop; k++) {
 		// First we shuffle the sequence by making a lot of random swap
@@ -174,9 +175,9 @@ void trn_sgdl1(mdl_t *mdl) {
 			// And at the same time, we update the total penalty
 			// that must have been applied to each features.
 			//   u <- u + η * rho1 / S
-			const double n0    = mdl->opt->sgdl1.eta0;
-			const double alpha = mdl->opt->sgdl1.alpha;
-			const double nk = n0 * pow(alpha, (double)i / S);
+			const float n0    = (float)mdl->opt->sgdl1.eta0;
+			const float alpha = (float)mdl->opt->sgdl1.alpha;
+			const float nk = n0 * pow(alpha, (float)i / S);
 			u = u + nk * mdl->opt->rho1 / S;
 			// Now we apply the update to all unigrams and bigrams
 			// observations actives in the current sequence. We must
@@ -185,16 +186,18 @@ void trn_sgdl1(mdl_t *mdl) {
 			for (uint32_t n = 0; idx[s].uobs[n] != none; n++) {
 				uint64_t f = mdl->uoff[idx[s].uobs[n]];
 				for (uint32_t y = 0; y < Y; y++, f++) {
-					w[f] -= nk * g[f];
+					w[f] -= nk * (float)g[f];
 					applypenalty(f);
+                    w_d[f] = (double)w[f];
 					g[f] = 0.0;
 				}
 			}
 			for (uint32_t n = 0; idx[s].bobs[n] != none; n++) {
 				uint64_t f = mdl->boff[idx[s].bobs[n]];
 				for (uint32_t d = 0; d < Y * Y; d++, f++) {
-					w[f] -= nk * g[f];
+					w[f] -= nk * (float)g[f];
 					applypenalty(f);
+                    w_d[f] = (double)w[f];
 					g[f] = 0.0;
 				}
 			}

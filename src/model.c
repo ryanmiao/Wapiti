@@ -71,6 +71,7 @@ mdl_t *mdl_new(rdr_t *rdr) {
 	mdl->kind   = NULL;
 	mdl->uoff   = mdl->boff  = NULL;
 	mdl->theta  = NULL;
+	mdl->theta_f  = NULL;
 	mdl->train  = mdl->devel = NULL;
 	mdl->reader = rdr;
 	mdl->werr   = NULL;
@@ -88,6 +89,8 @@ void mdl_free(mdl_t *mdl) {
 	free(mdl->boff);
 	if (mdl->theta != NULL)
 		xvm_free(mdl->theta);
+	if (mdl->theta_f != NULL)
+		xvm_free_f(mdl->theta_f);
 	if (mdl->train != NULL)
 		rdr_freedat(mdl->train);
 	if (mdl->devel != NULL)
@@ -144,6 +147,10 @@ void mdl_sync(mdl_t *mdl) {
 			xvm_free(mdl->theta);
 			mdl->theta = NULL;
 		}
+		if (mdl->theta_f != NULL) {
+			xvm_free_f(mdl->theta_f);
+			mdl->theta_f = NULL;
+		}
 		oldF = oldO = 0;
 	}
 	mdl->nlbl = Y;
@@ -182,11 +189,19 @@ void mdl_sync(mdl_t *mdl) {
 			new[f] = mdl->theta[f];
 		xvm_free(mdl->theta);
 		mdl->theta = new;
+		float *new_f = xvm_new_f(F);
+		for (uint64_t f = 0; f < oldF; f++)
+			new[f] = mdl->theta_f[f];
+		xvm_free_f(mdl->theta_f);
+		mdl->theta_f = new_f;
 	} else {
 		mdl->theta = xvm_new(F);
+		mdl->theta_f = xvm_new_f(F);
 	}
-	for (uint64_t f = oldF; f < F; f++)
+	for (uint64_t f = oldF; f < F; f++) {
 		mdl->theta[f] = 0.0;
+		mdl->theta_f[f] = 0.0;
+    }
 	// And lock the databases
 	qrk_lock(mdl->reader->lbl, true);
 	qrk_lock(mdl->reader->obs, true);

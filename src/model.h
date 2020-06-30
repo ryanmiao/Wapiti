@@ -75,7 +75,8 @@ struct mdl_s {
 	uint64_t *boff;    //  [O]  bigram weights offset
 
 	// The model itself
-	double   *theta;   //  [F]  features weights
+	double *theta;   //  [F]  features weights
+	float *theta_f;   //  [F]  features weights
 
 	// Datasets
 	dat_t    *train;   //       training dataset

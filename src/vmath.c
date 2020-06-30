@@ -68,10 +68,31 @@ double *xvm_new(uint64_t N) {
 #endif
 }
 
+float *xvm_new_f(uint64_t N) {
+#if defined(__SSE2__) && !defined(XVM_ANSI)
+	if (N % 4 != 0)
+		N += 4 - N % 4;
+	void *ptr = _mm_malloc(sizeof(float) * N, 16);
+	if (ptr == NULL)
+		fatal("out of memory");
+	return ptr;
+#else
+	return xmalloc(sizeof(float) * N);
+#endif
+}
+
 /* xvm_free:
  *   Free a vector allocated by xvm_new.
  */
 void xvm_free(double x[]) {
+#if defined(__SSE2__) && !defined(XVM_ANSI)
+	_mm_free(x);
+#else
+	free(x);
+#endif
+}
+
+void xvm_free_f(float x[]) {
 #if defined(__SSE2__) && !defined(XVM_ANSI)
 	_mm_free(x);
 #else
