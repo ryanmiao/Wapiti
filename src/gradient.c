@@ -65,6 +65,20 @@ void atm_inc(volatile double *value, double inc) {
 			break;
 	}
 }
+static inline
+void atm_inc_f(volatile float *value, float inc) {
+	while (1) {
+		volatile union {
+			float   d;
+			uint32_t u;
+		} old, new;
+		old.d = *value;
+		new.d = old.d + inc;
+		uint32_t *ptr = (uint32_t *)value;
+		if (__sync_bool_compare_and_swap(ptr, old.u, new.u))
+			break;
+	}
+}
 #endif
 
 /******************************************************************************
@@ -283,14 +297,14 @@ void grd_domemm(grd_st_t *grd_st, const seq_t *seq) {
  */
 void grd_fldopsi(grd_st_t *grd_st, const seq_t *seq) {
 	const mdl_t *mdl = grd_st->mdl;
-	const double  *x = mdl->theta;
+	const float *x = mdl->theta_f;
 	const uint32_t Y = mdl->nlbl;
 	const uint32_t T = seq->len;
-	double (*psi)[T][Y][Y] = (void *)grd_st->psi;
+	float (*psi)[T][Y][Y] = (void *)grd_st->psi_f;
 	for (uint32_t t = 0; t < T; t++) {
 		const pos_t *pos = &(seq->pos[t]);
 		for (uint32_t y = 0; y < Y; y++) {
-			double sum = 0.0;
+			float sum = 0.0;
 			for (uint32_t n = 0; n < pos->ucnt; n++) {
 				const uint64_t o = pos->uobs[n];
 				sum += x[mdl->uoff[o] + y];
@@ -303,7 +317,7 @@ void grd_fldopsi(grd_st_t *grd_st, const seq_t *seq) {
 		const pos_t *pos = &(seq->pos[t]);
 		for (uint32_t yp = 0, d = 0; yp < Y; yp++) {
 			for (uint32_t y = 0; y < Y; y++, d++) {
-				double sum = 0.0;
+				float sum = 0.0;
 				for (uint32_t n = 0; n < pos->bcnt; n++) {
 					const uint64_t o = pos->bobs[n];
 					sum += x[mdl->boff[o] + d];
@@ -312,7 +326,7 @@ void grd_fldopsi(grd_st_t *grd_st, const seq_t *seq) {
 			}
 		}
 	}
-	xvm_expma((double *)psi, (double *)psi, 0.0, (uint64_t)T * Y * Y);
+	xvm_expma_f((float *)psi, (float *)psi, 0.0, (uint64_t)T * Y * Y);
 }
 
 /* grd_spdopsi:
@@ -406,37 +420,37 @@ void grd_flfwdbwd(grd_st_t *grd_st, const seq_t *seq) {
 	const mdl_t *mdl = grd_st->mdl;
 	const uint64_t Y = mdl->nlbl;
 	const uint32_t T = seq->len;
-	const double (*psi)[T][Y][Y] = (void *)grd_st->psi;
-	double (*alpha)[T][Y] = (void *)grd_st->alpha;
-	double (*beta )[T][Y] = (void *)grd_st->beta;
-	double  *scale        =         grd_st->scale;
-	double  *unorm        =         grd_st->unorm;
-	double  *bnorm        =         grd_st->bnorm;
+	const float (*psi)[T][Y][Y] = (void *)grd_st->psi_f;
+	float (*alpha)[T][Y] = (void *)grd_st->alpha_f;
+	float (*beta )[T][Y] = (void *)grd_st->beta_f;
+	float *scale        =         grd_st->scale_f;
+	float *unorm        =         grd_st->unorm_f;
+	float *bnorm        =         grd_st->bnorm_f;
 	for (uint32_t y = 0; y < Y; y++)
 		(*alpha)[0][y] = (*psi)[0][0][y];
-	scale[0] = xvm_unit((*alpha)[0], (*alpha)[0], Y);
+	scale[0] = xvm_unit_f((*alpha)[0], (*alpha)[0], Y);
 	for (uint32_t t = 1; t < grd_st->last + 1; t++) {
 		for (uint32_t y = 0; y < Y; y++) {
-			double sum = 0.0;
+			float sum = 0.0;
 			for (uint32_t yp = 0; yp < Y; yp++)
 				sum += (*alpha)[t - 1][yp] * (*psi)[t][yp][y];
 			(*alpha)[t][y] = sum;
 		}
-		scale[t] = xvm_unit((*alpha)[t], (*alpha)[t], Y);
+		scale[t] = xvm_unit_f((*alpha)[t], (*alpha)[t], Y);
 	}
 	for (uint32_t yp = 0; yp < Y; yp++)
 		(*beta)[T - 1][yp] = 1.0 / Y;
 	for (uint32_t t = T - 1; t > grd_st->first; t--) {
 		for (uint32_t yp = 0; yp < Y; yp++) {
-			double sum = 0.0;
+			float sum = 0.0;
 			for (uint32_t y = 0; y < Y; y++)
 				sum += (*beta)[t][y] * (*psi)[t][yp][y];
 			(*beta)[t - 1][yp] = sum;
 		}
-		xvm_unit((*beta)[t - 1], (*beta)[t - 1], Y);
+		xvm_unit_f((*beta)[t - 1], (*beta)[t - 1], Y);
 	}
 	for (uint32_t t = 0; t < T; t++) {
-		double z = 0.0;
+		float z = 0.0;
 		for (uint32_t y = 0; y < Y; y++)
 			z += (*alpha)[t][y] * (*beta)[t][y];
 		unorm[t] = 1.0 / z;
@@ -559,19 +573,19 @@ void grd_flupgrad(grd_st_t *grd_st, const seq_t *seq) {
 	const mdl_t *mdl = grd_st->mdl;
 	const uint32_t Y = mdl->nlbl;
 	const uint32_t T = seq->len;
-	const double (*psi  )[T][Y][Y] = (void *)grd_st->psi;
-	const double (*alpha)[T][Y]    = (void *)grd_st->alpha;
-	const double (*beta )[T][Y]    = (void *)grd_st->beta;
-	const double  *unorm           =         grd_st->unorm;
-	const double  *bnorm           =         grd_st->bnorm;
-	double *g = grd_st->g;
+	const float (*psi  )[T][Y][Y] = (void *)grd_st->psi_f;
+	const float (*alpha)[T][Y]    = (void *)grd_st->alpha_f;
+	const float (*beta )[T][Y]    = (void *)grd_st->beta_f;
+	const float  *unorm           =         grd_st->unorm_f;
+	const float  *bnorm           =         grd_st->bnorm_f;
+	float *g = grd_st->g_f;
 	for (uint32_t t = 0; t < T; t++) {
 		const pos_t *pos = &(seq->pos[t]);
 		for (uint32_t y = 0; y < Y; y++) {
-			double e = (*alpha)[t][y] * (*beta)[t][y] * unorm[t];
+			float e = (*alpha)[t][y] * (*beta)[t][y] * unorm[t];
 			for (uint32_t n = 0; n < pos->ucnt; n++) {
 				const uint64_t o = pos->uobs[n];
-				atm_inc(g + mdl->uoff[o] + y, e);
+				atm_inc_f(g + mdl->uoff[o] + y, e);
 			}
 		}
 	}
@@ -579,11 +593,11 @@ void grd_flupgrad(grd_st_t *grd_st, const seq_t *seq) {
 		const pos_t *pos = &(seq->pos[t]);
 		for (uint32_t yp = 0, d = 0; yp < Y; yp++) {
 			for (uint32_t y = 0; y < Y; y++, d++) {
-				double e = (*alpha)[t - 1][yp] * (*beta)[t][y]
+				float e = (*alpha)[t - 1][yp] * (*beta)[t][y]
 				         * (*psi)[t][yp][y] * bnorm[t];
 				for (uint32_t n = 0; n < pos->bcnt; n++) {
 					const uint64_t o = pos->bobs[n];
-					atm_inc(g + mdl->boff[o] + d, e);
+					atm_inc_f(g + mdl->boff[o] + d, e);
 				}
 			}
 		}
@@ -662,12 +676,12 @@ void grd_subemp(grd_st_t *grd_st, const seq_t *seq) {
 	const mdl_t *mdl = grd_st->mdl;
 	const uint32_t Y = mdl->nlbl;
 	const uint32_t T = seq->len;
-	double *g = grd_st->g;
+	float *g = grd_st->g_f;
 	for (uint32_t t = 0; t < T; t++) {
 		const pos_t *pos = &(seq->pos[t]);
 		const uint32_t y = seq->pos[t].lbl;
 		for (uint32_t n = 0; n < pos->ucnt; n++)
-			atm_inc(g + mdl->uoff[pos->uobs[n]] + y, -1.0);
+			atm_inc_f(g + mdl->uoff[pos->uobs[n]] + y, -1.0);
 	}
 	for (uint32_t t = 1; t < T; t++) {
 		const pos_t *pos = &(seq->pos[t]);
@@ -675,7 +689,7 @@ void grd_subemp(grd_st_t *grd_st, const seq_t *seq) {
 		const uint32_t y  = seq->pos[t    ].lbl;
 		const uint32_t d  = yp * Y + y;
 		for (uint32_t n = 0; n < pos->bcnt; n++)
-			atm_inc(g + mdl->boff[pos->bobs[n]] + d, -1.0);
+			atm_inc_f(g + mdl->boff[pos->bobs[n]] + d, -1.0);
 	}
 }
 
@@ -703,18 +717,18 @@ void grd_subemp(grd_st_t *grd_st, const seq_t *seq) {
  */
 void grd_logloss(grd_st_t *grd_st, const seq_t *seq) {
 	const mdl_t *mdl = grd_st->mdl;
-	const double  *x = mdl->theta;
+	const float *x = mdl->theta_f;
 	const uint32_t Y = mdl->nlbl;
 	const uint32_t T = seq->len;
-	const double (*alpha)[T][Y] = (void *)grd_st->alpha;
-	const double  *scale        =         grd_st->scale;
-	double logz = 0.0;
+	const float (*alpha)[T][Y] = (void *)grd_st->alpha_f;
+	const float  *scale        =         grd_st->scale_f;
+	float logz = 0.0;
 	for (uint32_t y = 0; y < Y; y++)
 		logz += (*alpha)[T - 1][y];
 	logz = log(logz);
 	for (uint32_t t = 0; t < T; t++)
 		logz -= log(scale[t]);
-	double lloss = logz;
+	float lloss = logz;
 	for (uint32_t t = 0; t < T; t++) {
 		const pos_t *pos = &(seq->pos[t]);
 		const uint32_t y = seq->pos[t].lbl;

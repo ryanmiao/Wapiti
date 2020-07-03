@@ -48,17 +48,25 @@ struct grd_st_s {
 	mdl_t    *mdl;
 	uint32_t len;     // =T        max length of sequence
 	double   *g;       // [F]       vector where to put gradient updates
+	float    *g_f;       // [F]       vector where to put gradient updates
 	double    lloss;   //           loss value for the sequence
 	double   *psi;     // [T][Y][Y] the transitions scores
+	float    *psi_f;     // [T][Y][Y] the transitions scores
 	double   *psiuni;  // [T][Y]    | Same as psi in sparse format
+	float    *psiuni_f;  // [T][Y]    | Same as psi in sparse format
 	uint32_t *psiyp;   // [T][Y][Y] |
 	uint32_t *psiidx;  // [T][Y]    |
 	uint32_t *psioff;  // [T]
 	double   *alpha;   // [T][Y]    forward scores
+	float    *alpha_f;   // [T][Y]    forward scores
 	double   *beta;    // [T][Y]    backward scores
+	float    *beta_f;    // [T][Y]    backward scores
 	double   *scale;   // [T]       scaling factors of forward scores
+	float    *scale_f;   // [T]       scaling factors of forward scores
 	double   *unorm;   // [T]       normalization factors for unigrams
+	float    *unorm_f;   // [T]       normalization factors for unigrams
 	double   *bnorm;   // [T]       normalization factors for bigrams
+	float    *bnorm_f;   // [T]       normalization factors for bigrams
 	uint32_t  first;   //           first position where gradient is needed
 	uint32_t  last;    //           last position where gradient is needed
 };

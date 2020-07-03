@@ -157,6 +157,11 @@ void xvm_scale(double r[], const double x[], double a, uint64_t N) {
 		r[n] = x[n] * a;
 }
 
+void xvm_scale_f(float r[], const float x[], float a, uint64_t N) {
+	for (uint64_t n = 0; n < N; n++)
+		r[n] = x[n] * a;
+}
+
 /* xvm_norm:
  *   Store a normalized copy of the given vector in r and return the
  *   normalization factor.
@@ -167,6 +172,15 @@ double xvm_unit(double r[], const double x[], uint64_t N) {
 		sum += x[n];
 	const double scale = 1.0 / sum;
 	xvm_scale(r, x, scale, N);
+	return scale;
+}
+
+float xvm_unit_f(float r[], const float x[], uint64_t N) {
+	float sum = 0.0;
+	for (uint64_t n = 0; n < N; n++)
+		sum += x[n];
+	const float scale = 1.0 / sum;
+	xvm_scale_f(r, x, scale, N);
 	return scale;
 }
 
@@ -393,3 +407,7 @@ void xvm_expma(double r[], const double x[], double a, uint64_t N) {
 #endif
 }
 
+void xvm_expma_f(float r[], const float x[], float a, uint64_t N) {
+	for (uint64_t n = 0; n < N; n++)
+		r[n] = exp(x[n]) - a;
+}
