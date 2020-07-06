@@ -50,6 +50,7 @@ struct grd_st_s {
 	double   *g;       // [F]       vector where to put gradient updates
 	float    *g_f;       // [F]       vector where to put gradient updates
 	double    lloss;   //           loss value for the sequence
+	float lloss_f;   //           loss value for the sequence
 	double   *psi;     // [T][Y][Y] the transitions scores
 	float    *psi_f;     // [T][Y][Y] the transitions scores
 	double   *psiuni;  // [T][Y]    | Same as psi in sparse format
@@ -72,6 +73,7 @@ struct grd_st_s {
 };
 
 grd_st_t *grd_stnew(mdl_t *mdl, double *g);
+grd_st_t *grd_stnew_f(mdl_t *mdl, float *g);
 void grd_stfree(grd_st_t *grd_st);
 void grd_stcheck(grd_st_t *grd_st, uint32_t len);
 

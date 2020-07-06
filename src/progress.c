@@ -125,7 +125,7 @@ bool uit_progress(mdl_t *mdl, uint32_t it, double obj) {
 	// Next, we compute the number of active features
 	uint64_t act = 0;
 	for (uint64_t f = 0; f < mdl->nftr; f++)
-		if (mdl->theta[f] != 0.0)
+		if (mdl->theta_f[f] != 0.0)
 			act++;
 	// Compute timings. As some training algorithms are multi-threaded, we
 	// cannot use ansi/c function and must rely on posix one to sum time

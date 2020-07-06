@@ -143,8 +143,8 @@ void trn_sgdl1(mdl_t *mdl) {
 	uint32_t *perm = xmalloc(sizeof(uint32_t) * S);
 	for (uint32_t s = 0; s < S; s++)
 		perm[s] = s;
-	double *g = xmalloc(sizeof(double) * F);
-	double *q = xmalloc(sizeof(double) * F);
+	float *g = xmalloc(sizeof(float) * F);
+	float *q = xmalloc(sizeof(float) * F);
 	for (uint64_t f = 0; f < F; f++)
 		g[f] = q[f] = 0.0;
 	// We can now start training the model, we perform the requested number
@@ -152,7 +152,7 @@ void trn_sgdl1(mdl_t *mdl) {
 	// computing the decay, we will need to keep track of the number of
 	// already processed sequences, this is tracked by the <i> variable.
 	float u = 0.0;
-	grd_st_t *grd_st = grd_stnew(mdl, g);
+	grd_st_t *grd_st = grd_stnew_f(mdl, g);
 	for (uint32_t k = 0, i = 0; k < K && !uit_stop; k++) {
 		// First we shuffle the sequence by making a lot of random swap
 		// of entry in the permutation index.

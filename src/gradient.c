@@ -99,26 +99,26 @@ void atm_inc_f(volatile float *value, float inc) {
  ******************************************************************************/
 void grd_domaxent(grd_st_t *grd_st, const seq_t *seq) {
 	const mdl_t *mdl = grd_st->mdl;
-	const double  *x = mdl->theta;
+	const float *x = mdl->theta_f;
 	const uint32_t T = seq->len;
 	const uint32_t Y = mdl->nlbl;
-	double *psi = grd_st->psi;
-	double *g   = grd_st->g;
+	float *psi = grd_st->psi_f;
+	float *g   = grd_st->g_f;
 	for (uint32_t t = 0; t < T; t++) {
 		const pos_t *pos = &(seq->pos[t]);
 		// We first compute for each Y the sum of weights of all
 		// features actives in the sample:
 		//     Ψ(y,x^i) = \exp( ∑_k θ_k f_k(y,x^i) )
 		//     Z_θ(x^i) = ∑_y Ψ(y,x^i)
-		double Z = 0.0;
+		float Z = 0.0;
 		for (uint32_t y = 0; y < Y; y++)
 			psi[y] = 0.0;
 		for (uint32_t n = 0; n < pos->ucnt; n++) {
-			const double *wgh = x + mdl->uoff[pos->uobs[n]];
+			const float *wgh = x + mdl->uoff[pos->uobs[n]];
 			for (uint32_t y = 0; y < Y; y++)
 				psi[y] += wgh[y];
 		}
-		double lloss = psi[pos->lbl];
+		float lloss = psi[pos->lbl];
 		for (uint32_t y = 0; y < Y; y++) {
 			psi[y] = (psi[y] == 0.0) ? 1.0 : exp(psi[y]);
 			Z += psi[y];
@@ -133,14 +133,14 @@ void grd_domaxent(grd_st_t *grd_st, const seq_t *seq) {
 		for (uint32_t y = 0; y < Y; y++)
 			psi[y] /= Z;
 		for (uint32_t n = 0; n < pos->ucnt; n++) {
-			double *grd = g + mdl->uoff[pos->uobs[n]];
+			float *grd = g + mdl->uoff[pos->uobs[n]];
 			for (uint32_t y = 0; y < Y; y++)
-				atm_inc(grd + y, psi[y]);
-			atm_inc(grd + pos->lbl, -1.0);
+				atm_inc_f(grd + y, psi[y]);
+			atm_inc_f(grd + pos->lbl, -1.0);
 		}
 		// And finally the log-likelihood with:
 		//     L_θ(x^i,y^i) = log(Z_θ(x^i)) - log(ψ(y^i,x^i))
-		grd_st->lloss += log(Z) - lloss;
+		grd_st->lloss_f += log(Z) - lloss;
 	}
 }
 
@@ -743,7 +743,7 @@ void grd_logloss(grd_st_t *grd_st, const seq_t *seq) {
 		for (uint32_t n = 0; n < pos->bcnt; n++)
 			lloss -= x[mdl->boff[pos->bobs[n]] + d];
 	}
-	grd_st->lloss += lloss;
+	grd_st->lloss_f += lloss;
 }
 
 /* grd_docrf:
@@ -802,16 +802,23 @@ void grd_stcheck(grd_st_t *grd_st, uint32_t len) {
 	if (len == 0 || (len > grd_st->len && grd_st->len != 0)) {
 		if (grd_st->mdl->opt->sparse) {
 			xvm_free(grd_st->psiuni); grd_st->psiuni = NULL;
+			xvm_free_f(grd_st->psiuni_f); grd_st->psiuni_f = NULL;
 			free(grd_st->psiyp);      grd_st->psiyp  = NULL;
 			free(grd_st->psiidx);     grd_st->psiidx = NULL;
 			free(grd_st->psioff);     grd_st->psioff = NULL;
 		}
 		xvm_free(grd_st->psi);   grd_st->psi   = NULL;
+		xvm_free_f(grd_st->psi_f);   grd_st->psi_f   = NULL;
 		xvm_free(grd_st->alpha); grd_st->alpha = NULL;
+		xvm_free_f(grd_st->alpha_f); grd_st->alpha_f = NULL;
 		xvm_free(grd_st->beta);  grd_st->beta  = NULL;
+		xvm_free_f(grd_st->beta_f);  grd_st->beta_f  = NULL;
 		xvm_free(grd_st->unorm); grd_st->unorm = NULL;
+		xvm_free_f(grd_st->unorm_f); grd_st->unorm_f = NULL;
 		xvm_free(grd_st->bnorm); grd_st->bnorm = NULL;
+		xvm_free_f(grd_st->bnorm_f); grd_st->bnorm_f = NULL;
 		xvm_free(grd_st->scale); grd_st->scale = NULL;
+		xvm_free_f(grd_st->scale_f); grd_st->scale_f = NULL;
 		grd_st->len = 0;
 	}
 	if (len == 0 || len <= grd_st->len)
@@ -821,13 +828,20 @@ void grd_stcheck(grd_st_t *grd_st, uint32_t len) {
 	const uint32_t Y = grd_st->mdl->nlbl;
 	const uint32_t T = len;
 	grd_st->psi   = xvm_new(T * Y * Y);
+	grd_st->psi_f   = xvm_new_f(T * Y * Y);
 	grd_st->alpha = xvm_new(T * Y);
+	grd_st->alpha_f = xvm_new_f(T * Y);
 	grd_st->beta  = xvm_new(T * Y);
+	grd_st->beta_f  = xvm_new_f(T * Y);
 	grd_st->scale = xvm_new(T);
+	grd_st->scale_f = xvm_new_f(T);
 	grd_st->unorm = xvm_new(T);
+	grd_st->unorm_f = xvm_new_f(T);
 	grd_st->bnorm = xvm_new(T);
+	grd_st->bnorm_f = xvm_new_f(T);
 	if (grd_st->mdl->opt->sparse) {
 		grd_st->psiuni = xvm_new(T * Y);
+		grd_st->psiuni_f = xvm_new_f(T * Y);
 		grd_st->psiyp  = xmalloc(sizeof(uint32_t) * T * Y * Y);
 		grd_st->psiidx = xmalloc(sizeof(uint32_t) * T * Y);
 		grd_st->psioff = xmalloc(sizeof(uint32_t) * T);
@@ -857,6 +871,23 @@ grd_st_t *grd_stnew(mdl_t *mdl, double *g) {
 	return grd_st;
 }
 
+grd_st_t *grd_stnew_f(mdl_t *mdl, float *g) {
+	grd_st_t *grd_st  = xmalloc(sizeof(grd_st_t));
+	grd_st->mdl    = mdl;
+	grd_st->len    = 0;
+	grd_st->g_f      = g;
+	grd_st->psi_f    = NULL;
+	grd_st->psiuni_f = NULL;
+	grd_st->psiyp  = NULL;
+	grd_st->psiidx = NULL;
+	grd_st->psioff = NULL;
+	grd_st->alpha_f  = NULL;
+	grd_st->beta_f   = NULL;
+	grd_st->unorm_f  = NULL;
+	grd_st->bnorm_f  = NULL;
+	grd_st->scale_f  = NULL;
+	return grd_st;
+}
 /* grd_stfree:
  *   Free all memory used by gradient computation.
  */
