@@ -121,8 +121,8 @@ void grd_domaxent(grd_st_t *grd_st, const seq_t *seq) {
 		for (uint32_t n = 0; n < pos->ucnt; n++) {
 			double *grd = g + mdl->uoff[pos->uobs[n]];
 			for (uint32_t y = 0; y < Y; y++)
-				atm_inc(grd + y, psi[y]);
-			atm_inc(grd + pos->lbl, -1.0);
+				*(grd + y) += psi[y];
+			*(grd + pos->lbl) += -1.0;
 		}
 		// And finally the log-likelihood with:
 		//     L_θ(x^i,y^i) = log(Z_θ(x^i)) - log(ψ(y^i,x^i))
@@ -571,7 +571,7 @@ void grd_flupgrad(grd_st_t *grd_st, const seq_t *seq) {
 			double e = (*alpha)[t][y] * (*beta)[t][y] * unorm[t];
 			for (uint32_t n = 0; n < pos->ucnt; n++) {
 				const uint64_t o = pos->uobs[n];
-				atm_inc(g + mdl->uoff[o] + y, e);
+				*(g + mdl->uoff[o] + y) += e;
 			}
 		}
 	}
@@ -583,7 +583,7 @@ void grd_flupgrad(grd_st_t *grd_st, const seq_t *seq) {
 				         * (*psi)[t][yp][y] * bnorm[t];
 				for (uint32_t n = 0; n < pos->bcnt; n++) {
 					const uint64_t o = pos->bobs[n];
-					atm_inc(g + mdl->boff[o] + d, e);
+					*(g + mdl->boff[o] + d) += e;
 				}
 			}
 		}
@@ -667,7 +667,7 @@ void grd_subemp(grd_st_t *grd_st, const seq_t *seq) {
 		const pos_t *pos = &(seq->pos[t]);
 		const uint32_t y = seq->pos[t].lbl;
 		for (uint32_t n = 0; n < pos->ucnt; n++)
-			atm_inc(g + mdl->uoff[pos->uobs[n]] + y, -1.0);
+			*(g + mdl->uoff[pos->uobs[n]] + y) += -1.0;
 	}
 	for (uint32_t t = 1; t < T; t++) {
 		const pos_t *pos = &(seq->pos[t]);
@@ -675,7 +675,7 @@ void grd_subemp(grd_st_t *grd_st, const seq_t *seq) {
 		const uint32_t y  = seq->pos[t    ].lbl;
 		const uint32_t d  = yp * Y + y;
 		for (uint32_t n = 0; n < pos->bcnt; n++)
-			atm_inc(g + mdl->boff[pos->bobs[n]] + d, -1.0);
+			*(g + mdl->boff[pos->bobs[n]] + d) += -1.0;
 	}
 }
 

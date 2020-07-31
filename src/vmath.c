@@ -56,13 +56,22 @@ const char *xvm_mode(void) {
  *   vector allocated by this function if you use the optimized code paths.
  */
 double *xvm_new(uint64_t N) {
-#if defined(__SSE2__) && !defined(XVM_ANSI)
+#if 1
+#if 0 //defined(__SSE2__) && !defined(XVM_ANSI)
 	if (N % 4 != 0)
 		N += 4 - N % 4;
 	void *ptr = _mm_malloc(sizeof(double) * N, 16);
 	if (ptr == NULL)
 		fatal("out of memory");
 	return ptr;
+#else
+	if (N % 16 != 0)
+		N += 16 - N % 16;
+	void *ptr = _mm_malloc(sizeof(double) * N, 64);
+	if (ptr == NULL)
+		fatal("out of memory");
+	return ptr;
+#endif
 #else
 	return xmalloc(sizeof(double) * N);
 #endif
@@ -276,96 +285,90 @@ void xvm_axpy(double r[], double a, const double x[], const double y[],
  *   BSD licence like the remaining of Wapiti.
  */
 void xvm_expma(double r[], const double x[], double a, uint64_t N) {
-#if defined(__SSE2__) && !defined(XVM_ANSI)
-  #define xvm_vconst(v) (_mm_castsi128_pd(_mm_set1_epi64x((v))))
-	assert(r != NULL && ((uintptr_t)r % 16) == 0);
-	assert(x != NULL && ((uintptr_t)x % 16) == 0);
-	const __m128i vl  = _mm_set1_epi64x(0x3ff0000000000000ULL);
-	const __m128d ehi = xvm_vconst(0x4086232bdd7abcd2ULL);
-	const __m128d elo = xvm_vconst(0xc086232bdd7abcd2ULL);
-	const __m128d l2e = xvm_vconst(0x3ff71547652b82feULL);
-	const __m128d hal = xvm_vconst(0x3fe0000000000000ULL);
-	const __m128d nan = xvm_vconst(0xfff8000000000000ULL);
-	const __m128d inf = xvm_vconst(0x7ff0000000000000ULL);
-	const __m128d c1  = xvm_vconst(0x3fe62e4000000000ULL);
-	const __m128d c2  = xvm_vconst(0x3eb7f7d1cf79abcaULL);
-	const __m128d p0  = xvm_vconst(0x3feffffffffffffeULL);
-	const __m128d p1  = xvm_vconst(0x3ff000000000000bULL);
-	const __m128d p2  = xvm_vconst(0x3fe0000000000256ULL);
-	const __m128d p3  = xvm_vconst(0x3fc5555555553a2aULL);
-	const __m128d p4  = xvm_vconst(0x3fa55555554e57d3ULL);
-	const __m128d p5  = xvm_vconst(0x3f81111111362f4fULL);
-	const __m128d p6  = xvm_vconst(0x3f56c16c25f3bae1ULL);
-	const __m128d p7  = xvm_vconst(0x3f2a019fc9310c33ULL);
-	const __m128d p8  = xvm_vconst(0x3efa01825f3cb28bULL);
-	const __m128d p9  = xvm_vconst(0x3ec71e2bd880fdd8ULL);
-	const __m128d p10 = xvm_vconst(0x3e9299068168ac8fULL);
-	const __m128d p11 = xvm_vconst(0x3e5ac52350b60b19ULL);
-	const __m128d va  = _mm_set1_pd(a);
-	for (uint64_t n = 0; n < N; n += 4) {
-		__m128d mn1, mn2, mi1, mi2;
-		__m128d t1,  t2,  d1,  d2;
-		__m128d v1,  v2,  w1,  w2;
-		__m128i k1,  k2;
-		__m128d f1,  f2;
+#if 1 //defined(__SSE2__) && !defined(XVM_ANSI)
+  #define xvm_vconst(v) (_mm512_castsi512_pd (_mm512_set1_epi64((v))))
+	assert(r != NULL && ((uintptr_t)r % 64) == 0);
+	assert(x != NULL && ((uintptr_t)x % 64) == 0);
+	const __m512i vl  = _mm512_set1_epi64(0x3ff0000000000000ULL);
+	//const __m512d ehi = xvm_vconst(0x4086232bdd7abcd2ULL);
+	const __m512d elo = xvm_vconst(0xc086232bdd7abcd2ULL);
+	const __m512d l2e = xvm_vconst(0x3ff71547652b82feULL);
+	const __m512d hal = xvm_vconst(0x3fe0000000000000ULL);
+	//const __m512d nan = xvm_vconst(0xfff8000000000000ULL);
+	//const __m512d inf = xvm_vconst(0x7ff0000000000000ULL);
+	const __m512d c1  = xvm_vconst(0x3fe62e4000000000ULL);
+	const __m512d c2  = xvm_vconst(0x3eb7f7d1cf79abcaULL);
+	const __m512d p0  = xvm_vconst(0x3feffffffffffffeULL);
+	const __m512d p1  = xvm_vconst(0x3ff000000000000bULL);
+	const __m512d p2  = xvm_vconst(0x3fe0000000000256ULL);
+	const __m512d p3  = xvm_vconst(0x3fc5555555553a2aULL);
+	const __m512d p4  = xvm_vconst(0x3fa55555554e57d3ULL);
+	const __m512d p5  = xvm_vconst(0x3f81111111362f4fULL);
+	const __m512d p6  = xvm_vconst(0x3f56c16c25f3bae1ULL);
+	const __m512d p7  = xvm_vconst(0x3f2a019fc9310c33ULL);
+	const __m512d p8  = xvm_vconst(0x3efa01825f3cb28bULL);
+	const __m512d p9  = xvm_vconst(0x3ec71e2bd880fdd8ULL);
+	const __m512d p10 = xvm_vconst(0x3e9299068168ac8fULL);
+	const __m512d p11 = xvm_vconst(0x3e5ac52350b60b19ULL);
+	const __m512d va  = _mm512_set1_pd(a);
+	for (uint64_t n = 0; n < N; n += 16) {
+		//__m512d mn1, mn2, mi1, mi2;
+		//__mmask8 mn1, mn2, mi1, mi2;
+		__m512d t1,  t2,  d1,  d2;
+		__m512d v1,  v2,  w1,  w2;
+		__m256i _k1,  _k2;
+		__m512i k1,  k2;
+		__m512d f1,  f2;
+        __m512i idx = _mm512_set_epi32(0xf, 0xf, 7, 6, 0xf, 0xf, 5, 4, 0xf, 0xf, 3, 2, 0xf, 0xf, 1, 0);
+        __mmask16 mask = 0x3333;
 		// Load the next four values
-		__m128d x1 = _mm_load_pd(x + n    );
-		__m128d x2 = _mm_load_pd(x + n + 2);
+		__m512d x1 = _mm512_loadu_pd(x + n    );
+		__m512d x2 = _mm512_loadu_pd(x + n + 8);
 		// Check for out of ranges, infinites and NaN
-		mn1 = _mm_cmpneq_pd(x1, x1);	mn2 = _mm_cmpneq_pd(x2, x2);
-		mi1 = _mm_cmpgt_pd(x1, ehi);	mi2 = _mm_cmpgt_pd(x2, ehi);
-		x1  = _mm_max_pd(x1, elo);	x2  = _mm_max_pd(x2, elo);
+		//mn1 = _mm512_cmpneq_pd(x1, x1);         mn2 = _mm512_cmpneq_pd(x2, x2);
+		//mi1 = _mm512_cmp_pd_mask(x1, ehi, _CMP_GT_OQ);	mi2 = _mm512_cmp_pd_mask(x2, ehi, _CMP_GT_OQ);
+		x1  = _mm512_max_pd(x1, elo);	        x2  = _mm512_max_pd(x2, elo);
 		// Range reduction: we search k and f such that e^x = 2^k * e^f
 		// with f in [-0.5, 0.5]
-		t1  = _mm_mul_pd(x1, l2e);	t2  = _mm_mul_pd(x2, l2e);
-		t1  = _mm_add_pd(t1, hal);	t2  = _mm_add_pd(t2, hal);
-		k1  = _mm_cvttpd_epi32(t1);	k2  = _mm_cvttpd_epi32(t2);
-		d1  = _mm_cvtepi32_pd(k1);	d2  = _mm_cvtepi32_pd(k2);
-		t1  = _mm_mul_pd(d1, c1);	t2  = _mm_mul_pd(d2, c1);
-		f1  = _mm_sub_pd(x1, t1);	f2  = _mm_sub_pd(x2, t2);
-		t1  = _mm_mul_pd(d1, c2);	t2  = _mm_mul_pd(d2, c2);
-		f1  = _mm_sub_pd(f1, t1);	f2  = _mm_sub_pd(f2, t2);
+		t1  = _mm512_fmadd_pd(x1, l2e, hal);	t2  = _mm512_fmadd_pd(x2, l2e, hal);
+		_k1  = _mm512_cvttpd_epi32(t1);         _k2  = _mm512_cvttpd_epi32(t2);
+		d1  = _mm512_cvtepi32_pd(_k1);	        d2  = _mm512_cvtepi32_pd(_k2);
+		t1  = _mm512_mul_pd(d1, c1);	        t2  = _mm512_mul_pd(d2, c1);
+		f1  = _mm512_sub_pd(x1, t1);	        f2  = _mm512_sub_pd(x2, t2);
+		t1  = _mm512_mul_pd(d1, c2);    	    t2  = _mm512_mul_pd(d2, c2);
+		f1  = _mm512_sub_pd(f1, t1);           	f2  = _mm512_sub_pd(f2, t2);
 		// Evaluation of e^f using a 11th order polynom in Horner form
-		v1  = _mm_mul_pd(f1, p11);	v2  = _mm_mul_pd(f2, p11);
-		v1  = _mm_add_pd(v1, p10);	v2  = _mm_add_pd(v2, p10);
-		v1  = _mm_mul_pd(v1, f1);	v2  = _mm_mul_pd(v2, f2);
-		v1  = _mm_add_pd(v1, p9);	v2  = _mm_add_pd(v2, p9);
-		v1  = _mm_mul_pd(v1, f1);	v2  = _mm_mul_pd(v2, f2);
-		v1  = _mm_add_pd(v1, p8);	v2  = _mm_add_pd(v2, p8);
-		v1  = _mm_mul_pd(v1, f1);	v2  = _mm_mul_pd(v2, f2);
-		v1  = _mm_add_pd(v1, p7);	v2  = _mm_add_pd(v2, p7);
-		v1  = _mm_mul_pd(v1, f1);	v2  = _mm_mul_pd(v2, f2);
-		v1  = _mm_add_pd(v1, p6);	v2  = _mm_add_pd(v2, p6);
-		v1  = _mm_mul_pd(v1, f1);	v2  = _mm_mul_pd(v2, f2);
-		v1  = _mm_add_pd(v1, p5);	v2  = _mm_add_pd(v2, p5);
-		v1  = _mm_mul_pd(v1, f1);	v2  = _mm_mul_pd(v2, f2);
-		v1  = _mm_add_pd(v1, p4);	v2  = _mm_add_pd(v2, p4);
-		v1  = _mm_mul_pd(v1, f1);	v2  = _mm_mul_pd(v2, f2);
-		v1  = _mm_add_pd(v1, p3);	v2  = _mm_add_pd(v2, p3);
-		v1  = _mm_mul_pd(v1, f1);	v2  = _mm_mul_pd(v2, f2);
-		v1  = _mm_add_pd(v1, p2);	v2  = _mm_add_pd(v2, p2);
-		v1  = _mm_mul_pd(v1, f1);	v2  = _mm_mul_pd(v2, f2);
-		v1  = _mm_add_pd(v1, p1);	v2  = _mm_add_pd(v2, p1);
-		v1  = _mm_mul_pd(v1, f1);	v2  = _mm_mul_pd(v2, f2);
-		v1  = _mm_add_pd(v1, p0);	v2  = _mm_add_pd(v2, p0);
+		v1  = _mm512_fmadd_pd(f1, p11, p10);	v2  = _mm512_fmadd_pd(f2, p11, p10);
+		v1  = _mm512_fmadd_pd(v1, f1, p9); 	    v2  = _mm512_fmadd_pd(v2, f2, p9);
+		v1  = _mm512_fmadd_pd(v1, f1, p8);  	v2  = _mm512_fmadd_pd(v2, f2, p8);
+		v1  = _mm512_fmadd_pd(v1, f1, p7);  	v2  = _mm512_fmadd_pd(v2, f2, p7);
+		v1  = _mm512_fmadd_pd(v1, f1, p6);  	v2  = _mm512_fmadd_pd(v2, f2, p6);
+		v1  = _mm512_fmadd_pd(v1, f1, p5);  	v2  = _mm512_fmadd_pd(v2, f2, p5);
+		v1  = _mm512_fmadd_pd(v1, f1, p4);  	v2  = _mm512_fmadd_pd(v2, f2, p4);
+		v1  = _mm512_fmadd_pd(v1, f1, p3);  	v2  = _mm512_fmadd_pd(v2, f2, p3);
+		v1  = _mm512_fmadd_pd(v1, f1, p2);  	v2  = _mm512_fmadd_pd(v2, f2, p2);
+		v1  = _mm512_fmadd_pd(v1, f1, p1);  	v2  = _mm512_fmadd_pd(v2, f2, p1);
+		v1  = _mm512_fmadd_pd(v1, f1, p0);  	v2  = _mm512_fmadd_pd(v2, f2, p0);
 		// Evaluation of 2^k using bitops to achieve exact computation
-		k1  = _mm_slli_epi32(k1, 20);	k2  = _mm_slli_epi32(k2, 20);
-		k1  = _mm_shuffle_epi32(k1, 0x72);
-		k2  = _mm_shuffle_epi32(k2, 0x72);
-		k1  = _mm_add_epi32(k1, vl);	k2  = _mm_add_epi32(k2, vl);
-		w1  = _mm_castsi128_pd(k1);	w2  = _mm_castsi128_pd(k2);
+		k1  = _mm512_castsi256_si512(_k1);	    k2  = _mm512_castsi256_si512(_k2);
+        k1  = _mm512_maskz_permutexvar_epi32(mask, idx, k1);    k2  = _mm512_maskz_permutexvar_epi32(mask, idx, k2);
+		k1  = _mm512_slli_epi32(k1, 20);	    k2  = _mm512_slli_epi32(k2, 20);
+		k1  = _mm512_shuffle_epi32(k1, 0x72);
+		k2  = _mm512_shuffle_epi32(k2, 0x72);
+		k1  = _mm512_add_epi32(k1, vl);	        k2  = _mm512_add_epi32(k2, vl);
+		w1  = _mm512_castsi512_pd (k1);	        w2  = _mm512_castsi512_pd (k2);
 		// Return to full range to substract <a>
-	        v1  = _mm_mul_pd(v1, w1);	v2  = _mm_mul_pd(v2, w2);
-		v1  = _mm_sub_pd(v1, va);	v2  = _mm_sub_pd(v2, va);
+        v1  = _mm512_mul_pd(v1, w1);	        v2  = _mm512_mul_pd(v2, w2);
+		v1  = _mm512_sub_pd(v1, va);    	    v2  = _mm512_sub_pd(v2, va);
 		// Finally apply infinite and NaN where needed
-		v1  = _mm_or_pd(_mm_and_pd(mi1, inf), _mm_andnot_pd(mi1, v1));
-		v2  = _mm_or_pd(_mm_and_pd(mi2, inf), _mm_andnot_pd(mi2, v2));
-		v1  = _mm_or_pd(_mm_and_pd(mn1, nan), _mm_andnot_pd(mn1, v1));
-		v2  = _mm_or_pd(_mm_and_pd(mn2, nan), _mm_andnot_pd(mn2, v2));
+		//v1  = _mm512_or_pd(_mm512_and_pd(mi1, inf), _mm512_andnot_pd(mi1, v1));
+		//v2  = _mm512_or_pd(_mm512_and_pd(mi2, inf), _mm512_andnot_pd(mi2, v2));
+		//v1  = _mm512_or_pd(_mm512_and_pd(mn1, nan), _mm512_andnot_pd(mn1, v1));
+		//v2  = _mm512_or_pd(_mm512_and_pd(mn2, nan), _mm512_andnot_pd(mn2, v2));
 		// Store the results
-		_mm_store_pd(r + n,     v1);
-		_mm_store_pd(r + n + 2, v2);
-	}
+		_mm512_storeu_pd(r + n,     v1);
+		_mm512_storeu_pd(r + n + 8, v2);
+    }
 #else
 	for (uint64_t n = 0; n < N; n++)
 		r[n] = exp(x[n]) - a;

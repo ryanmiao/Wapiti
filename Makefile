@@ -1,4 +1,5 @@
-CFLAGS =-std=c99 -W -Wall -Wextra -O3
+CC = gcc
+CFLAGS =-std=c99 -W -Wall -Wextra -O3 -mavx512f -mfma
 LIBS   =-lm -lpthread
 
 DESTDIR=

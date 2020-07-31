@@ -54,6 +54,6 @@
 #ifdef MTH_ANSI
 #define ATM_ANSI
 #endif
-
+#include <immintrin.h>
 #endif
 

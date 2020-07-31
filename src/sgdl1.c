@@ -65,11 +65,11 @@ typedef struct sgd_idx_s {
  *   This function match exactly the APPLYPENALTY function defined in [1] pp 481
  *   and the formula on the middle of the page 480.
  */
-#define applypenalty(f) do {                               \
-	const double z = w[f];                             \
-	if      (z > 0.0) w[f] = max(0.0, z - (u + q[f])); \
+#define applypenalty(f) do {							   \
+	const double z = w[f];							 \
+	if	  (z > 0.0) w[f] = max(0.0, z - (u + q[f])); \
 	else if (z < 0.0) w[f] = min(0.0, z + (u - q[f])); \
-	q[f] += w[f] - z;                                  \
+	q[f] += w[f] - z;								  \
 } while (false)
 
 /* sgd_add:
@@ -98,13 +98,14 @@ void trn_sgdl1(mdl_t *mdl) {
 	const uint32_t  B = mdl->reader->nbi;
 	const uint32_t  S = mdl->train->nseq;
 	const uint32_t  K = mdl->opt->maxiter;
-	      double   *w = mdl->theta;
+		  double   *w = mdl->theta;
+	
 	// First we have to build and index who hold, for each sequences, the
 	// list of actives observations.
 	// The index is a simple table indexed by sequences number. Each entry
 	// point to two lists of observations terminated by <none>, one for
 	// unigrams obss and one for bigrams obss.
-	info("    - Build the index\n");
+	info("	- Build the index\n");
 	sgd_idx_t *idx  = xmalloc(sizeof(sgd_idx_t) * S);
 	for (uint32_t s = 0; s < S; s++) {
 		const seq_t *seq = mdl->train->seq[s];
@@ -126,7 +127,7 @@ void trn_sgdl1(mdl_t *mdl) {
 		memcpy(idx[s].uobs, uobs, ucnt * sizeof(uint64_t));
 		memcpy(idx[s].bobs, bobs, bcnt * sizeof(uint64_t));
 	}
-	info("      Done\n");
+	info("	  Done\n");
 	// We will process sequences in random order in each iteration, so we
 	// will have to permute them. The current permutation is stored in a
 	// vector called <perm> shuffled at the start of each iteration. We
@@ -152,6 +153,7 @@ void trn_sgdl1(mdl_t *mdl) {
 	// already processed sequences, this is tracked by the <i> variable.
 	double u = 0.0;
 	grd_st_t *grd_st = grd_stnew(mdl, g);
+	_mm_prefetch(w, _MM_HINT_T2);
 	for (uint32_t k = 0, i = 0; k < K && !uit_stop; k++) {
 		// First we shuffle the sequence by making a lot of random swap
 		// of entry in the permutation index.
@@ -174,7 +176,7 @@ void trn_sgdl1(mdl_t *mdl) {
 			// And at the same time, we update the total penalty
 			// that must have been applied to each features.
 			//   u <- u + η * rho1 / S
-			const double n0    = mdl->opt->sgdl1.eta0;
+			const double n0	= mdl->opt->sgdl1.eta0;
 			const double alpha = mdl->opt->sgdl1.alpha;
 			const double nk = n0 * pow(alpha, (double)i / S);
 			u = u + nk * mdl->opt->rho1 / S;
@@ -184,18 +186,69 @@ void trn_sgdl1(mdl_t *mdl) {
 			// sequence.
 			for (uint32_t n = 0; idx[s].uobs[n] != none; n++) {
 				uint64_t f = mdl->uoff[idx[s].uobs[n]];
-				for (uint32_t y = 0; y < Y; y++, f++) {
-					w[f] -= nk * g[f];
-					applypenalty(f);
-					g[f] = 0.0;
+				_mm_prefetch(w+f, _MM_HINT_T0);
+				_mm_prefetch(g+f, _MM_HINT_T0);
+				_mm_prefetch(q+f, _MM_HINT_T0);
+				for (uint32_t y = 0; y < Y >> 2 ; y++) {
+					__m512d w_x4 = _mm512_maskz_loadu_pd(0xf, w + f);
+					__m512d g_x4 = _mm512_maskz_loadu_pd(0xf, g + f);
+					__m512d q_x4 = _mm512_maskz_loadu_pd(0xf, q + f);
+					__m512d nk_x4 = _mm512_set1_pd(nk);
+					__m512d nkg_x4 = _mm512_mul_pd(nk_x4, g_x4);
+					w_x4 = _mm512_sub_pd(w_x4, nkg_x4);
+
+					__m512d u_x4 = _mm512_set1_pd(u);
+
+					__m512d u_add_q_x4 = _mm512_add_pd(u_x4, q_x4);
+					__m512d u_sub_q_x4 = _mm512_sub_pd(u_x4, q_x4);
+					__m512d w_u_add_q_x4 = _mm512_add_pd(w_x4, u_sub_q_x4);
+					__m512d w_u_sub_q_x4 = _mm512_sub_pd(w_x4, u_add_q_x4);
+
+					__m512d max_w_q_u_x4 = _mm512_max_pd(_mm512_setzero_pd(), w_u_sub_q_x4);
+					__m512d min_w_u_q_x4 = _mm512_min_pd(_mm512_setzero_pd(), w_u_add_q_x4);
+
+					__mmask8 w_lt0_x4 = _mm512_cmp_pd_mask(w_x4, _mm512_setzero_pd(), _CMP_LT_OQ);
+					__mmask8 w_gt0_x4 = _mm512_cmp_pd_mask(w_x4, _mm512_setzero_pd(), _CMP_GT_OQ);
+					__m512d temp = _mm512_mask_blend_pd(w_lt0_x4, w_x4, min_w_u_q_x4);
+					temp = _mm512_mask_blend_pd(w_gt0_x4, temp, max_w_q_u_x4);
+					__m512d w_z_x4 = _mm512_sub_pd(temp, w_x4);
+					q_x4 = _mm512_add_pd(q_x4, w_z_x4);
+					_mm512_mask_storeu_pd(q + f, 0xf, q_x4);
+					_mm512_mask_storeu_pd(g + f, 0xf, _mm512_setzero_pd());
+					_mm512_mask_storeu_pd(w + f, 0xf, temp);
+					f += 4;
 				}
 			}
 			for (uint32_t n = 0; idx[s].bobs[n] != none; n++) {
 				uint64_t f = mdl->boff[idx[s].bobs[n]];
-				for (uint32_t d = 0; d < Y * Y; d++, f++) {
-					w[f] -= nk * g[f];
-					applypenalty(f);
-					g[f] = 0.0;
+				for (uint32_t d = 0; d < Y*Y >> 2 ; d++) {
+					__m512d w_x4 = _mm512_maskz_loadu_pd(0xf, w + f);
+					__m512d g_x4 = _mm512_maskz_loadu_pd(0xf, g + f);
+					__m512d q_x4 = _mm512_maskz_loadu_pd(0xf, q + f);
+					__m512d nk_x4 = _mm512_set1_pd(nk);
+					__m512d nkg_x4 = _mm512_mul_pd(nk_x4, g_x4);
+					w_x4 = _mm512_sub_pd(w_x4, nkg_x4);
+
+					__m512d u_x4 = _mm512_set1_pd(u);
+
+					__m512d u_add_q_x4 = _mm512_add_pd(u_x4, q_x4);
+					__m512d u_sub_q_x4 = _mm512_sub_pd(u_x4, q_x4);
+					__m512d w_u_add_q_x4 = _mm512_add_pd(w_x4, u_sub_q_x4);
+					__m512d w_u_sub_q_x4 = _mm512_sub_pd(w_x4, u_add_q_x4);
+
+					__m512d max_w_q_u_x4 = _mm512_max_pd(_mm512_setzero_pd(), w_u_sub_q_x4);
+					__m512d min_w_u_q_x4 = _mm512_min_pd(_mm512_setzero_pd(), w_u_add_q_x4);
+
+					__mmask8 w_lt0_x4 = _mm512_cmp_pd_mask(w_x4, _mm512_setzero_pd(), _CMP_LT_OQ);
+					__mmask8 w_gt0_x4 = _mm512_cmp_pd_mask(w_x4, _mm512_setzero_pd(), _CMP_GT_OQ);
+					__m512d temp = _mm512_mask_blend_pd(w_lt0_x4, w_x4, min_w_u_q_x4);
+					temp = _mm512_mask_blend_pd(w_gt0_x4, temp, max_w_q_u_x4);
+					__m512d w_z_x4 = _mm512_sub_pd(temp, w_x4);
+					q_x4 = _mm512_add_pd(q_x4, w_z_x4);
+					_mm512_mask_storeu_pd(q + f, 0xf, q_x4);
+					_mm512_mask_storeu_pd(g + f, 0xf, _mm512_setzero_pd());
+					_mm512_mask_storeu_pd(w + f, 0xf, temp);
+					f += 4;
 				}
 			}
 		}
