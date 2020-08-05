@@ -90,6 +90,11 @@ struct mdl_s {
 	// Timing
 	tms_t     timer;   //       start time of last iter
 	double    total;   //       total training time
+	uint32_t  nb; // vectorization size
+	uint32_t  Y_div; // 
+	uint32_t  Y_mod; // 
+	uint32_t  Y_res; // 
+#define MDL_NB  3
 };
 
 mdl_t *mdl_new(rdr_t *rdr);

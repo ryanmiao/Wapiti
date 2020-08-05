@@ -147,6 +147,11 @@ void mdl_sync(mdl_t *mdl) {
 		oldF = oldO = 0;
 	}
 	mdl->nlbl = Y;
+    mdl->nb = MDL_NB;
+    mdl->Y_div = Y / mdl->nb;
+    mdl->Y_mod = Y % mdl->nb;
+    mdl->Y_res = mdl->Y_mod != 0? 1 : 0;
+
 	mdl->nobs = O;
 	// Allocate the observations datastructure. If the model is empty or
 	// discarded, a new one iscreated, else the old one is expanded.

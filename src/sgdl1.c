@@ -100,6 +100,12 @@ void trn_sgdl1(mdl_t *mdl) {
 	const uint32_t  K = mdl->opt->maxiter;
 		  double   *w = mdl->theta;
 	
+	uint32_t nb = mdl->nb;
+	uint32_t Y_div = mdl->Y_div;
+	uint32_t Y_mod = mdl->Y_mod;
+	uint32_t Y_res = mdl->Y_res;
+	__mmask8 mask_res = (1 << Y_mod ) - 1;
+	__mmask8 mask_nb = (1 << nb) - 1;
 	// First we have to build and index who hold, for each sequences, the
 	// list of actives observations.
 	// The index is a simple table indexed by sequences number. Each entry
@@ -189,66 +195,68 @@ void trn_sgdl1(mdl_t *mdl) {
 				_mm_prefetch(w+f, _MM_HINT_T0);
 				_mm_prefetch(g+f, _MM_HINT_T0);
 				_mm_prefetch(q+f, _MM_HINT_T0);
-				for (uint32_t y = 0; y < Y >> 2 ; y++) {
-					__m512d w_x4 = _mm512_maskz_loadu_pd(0xf, w + f);
-					__m512d g_x4 = _mm512_maskz_loadu_pd(0xf, g + f);
-					__m512d q_x4 = _mm512_maskz_loadu_pd(0xf, q + f);
-					__m512d nk_x4 = _mm512_set1_pd(nk);
-					__m512d nkg_x4 = _mm512_mul_pd(nk_x4, g_x4);
-					w_x4 = _mm512_sub_pd(w_x4, nkg_x4);
+				for (uint32_t y = 0; y < Y_div + Y_res ; y++) {
+					__mmask8 mask = mask_res | ((y - Y_div) >> 31) * mask_nb;
+					__m512d w_xnb = _mm512_maskz_loadu_pd(mask, w + f);
+					__m512d g_xnb = _mm512_maskz_loadu_pd(mask, g + f);
+					__m512d q_xnb = _mm512_maskz_loadu_pd(mask, q + f);
+					__m512d nk_xnb = _mm512_set1_pd(nk);
+					__m512d nkg_xnb = _mm512_mul_pd(nk_xnb, g_xnb);
+					w_xnb = _mm512_sub_pd(w_xnb, nkg_xnb);
 
-					__m512d u_x4 = _mm512_set1_pd(u);
+					__m512d u_xnb = _mm512_set1_pd(u);
 
-					__m512d u_add_q_x4 = _mm512_add_pd(u_x4, q_x4);
-					__m512d u_sub_q_x4 = _mm512_sub_pd(u_x4, q_x4);
-					__m512d w_u_add_q_x4 = _mm512_add_pd(w_x4, u_sub_q_x4);
-					__m512d w_u_sub_q_x4 = _mm512_sub_pd(w_x4, u_add_q_x4);
+					__m512d u_add_q_xnb = _mm512_add_pd(u_xnb, q_xnb);
+					__m512d u_sub_q_xnb = _mm512_sub_pd(u_xnb, q_xnb);
+					__m512d w_u_add_q_xnb = _mm512_add_pd(w_xnb, u_sub_q_xnb);
+					__m512d w_u_sub_q_xnb = _mm512_sub_pd(w_xnb, u_add_q_xnb);
 
-					__m512d max_w_q_u_x4 = _mm512_max_pd(_mm512_setzero_pd(), w_u_sub_q_x4);
-					__m512d min_w_u_q_x4 = _mm512_min_pd(_mm512_setzero_pd(), w_u_add_q_x4);
+					__m512d max_w_q_u_xnb = _mm512_max_pd(_mm512_setzero_pd(), w_u_sub_q_xnb);
+					__m512d min_w_u_q_xnb = _mm512_min_pd(_mm512_setzero_pd(), w_u_add_q_xnb);
 
-					__mmask8 w_lt0_x4 = _mm512_cmp_pd_mask(w_x4, _mm512_setzero_pd(), _CMP_LT_OQ);
-					__mmask8 w_gt0_x4 = _mm512_cmp_pd_mask(w_x4, _mm512_setzero_pd(), _CMP_GT_OQ);
-					__m512d temp = _mm512_mask_blend_pd(w_lt0_x4, w_x4, min_w_u_q_x4);
-					temp = _mm512_mask_blend_pd(w_gt0_x4, temp, max_w_q_u_x4);
-					__m512d w_z_x4 = _mm512_sub_pd(temp, w_x4);
-					q_x4 = _mm512_add_pd(q_x4, w_z_x4);
-					_mm512_mask_storeu_pd(q + f, 0xf, q_x4);
-					_mm512_mask_storeu_pd(g + f, 0xf, _mm512_setzero_pd());
-					_mm512_mask_storeu_pd(w + f, 0xf, temp);
-					f += 4;
+					__mmask8 w_lt0_xnb = _mm512_cmp_pd_mask(w_xnb, _mm512_setzero_pd(), _CMP_LT_OQ);
+					__mmask8 w_gt0_xnb = _mm512_cmp_pd_mask(w_xnb, _mm512_setzero_pd(), _CMP_GT_OQ);
+					__m512d temp = _mm512_mask_blend_pd(w_lt0_xnb, w_xnb, min_w_u_q_xnb);
+					temp = _mm512_mask_blend_pd(w_gt0_xnb, temp, max_w_q_u_xnb);
+					__m512d w_z_xnb = _mm512_sub_pd(temp, w_xnb);
+					q_xnb = _mm512_add_pd(q_xnb, w_z_xnb);
+					_mm512_mask_storeu_pd(q + f, mask, q_xnb);
+					_mm512_mask_storeu_pd(g + f, mask, _mm512_setzero_pd());
+					_mm512_mask_storeu_pd(w + f, mask, temp);
+					f += nb;
 				}
 			}
 			for (uint32_t n = 0; idx[s].bobs[n] != none; n++) {
 				uint64_t f = mdl->boff[idx[s].bobs[n]];
-				for (uint32_t d = 0; d < Y*Y >> 2 ; d++) {
-					__m512d w_x4 = _mm512_maskz_loadu_pd(0xf, w + f);
-					__m512d g_x4 = _mm512_maskz_loadu_pd(0xf, g + f);
-					__m512d q_x4 = _mm512_maskz_loadu_pd(0xf, q + f);
-					__m512d nk_x4 = _mm512_set1_pd(nk);
-					__m512d nkg_x4 = _mm512_mul_pd(nk_x4, g_x4);
-					w_x4 = _mm512_sub_pd(w_x4, nkg_x4);
+				for (uint32_t d = 0; d < Y*Y_div + Y_res; d++) {
+					__mmask8 mask = mask_res | ((d - Y*Y_div) >> 31) * mask_nb;
+					__m512d w_xnb = _mm512_maskz_loadu_pd(mask, w + f);
+					__m512d g_xnb = _mm512_maskz_loadu_pd(mask, g + f);
+					__m512d q_xnb = _mm512_maskz_loadu_pd(mask, q + f);
+					__m512d nk_xnb = _mm512_set1_pd(nk);
+					__m512d nkg_xnb = _mm512_mul_pd(nk_xnb, g_xnb);
+					w_xnb = _mm512_sub_pd(w_xnb, nkg_xnb);
 
-					__m512d u_x4 = _mm512_set1_pd(u);
+					__m512d u_xnb = _mm512_set1_pd(u);
 
-					__m512d u_add_q_x4 = _mm512_add_pd(u_x4, q_x4);
-					__m512d u_sub_q_x4 = _mm512_sub_pd(u_x4, q_x4);
-					__m512d w_u_add_q_x4 = _mm512_add_pd(w_x4, u_sub_q_x4);
-					__m512d w_u_sub_q_x4 = _mm512_sub_pd(w_x4, u_add_q_x4);
+					__m512d u_add_q_xnb = _mm512_add_pd(u_xnb, q_xnb);
+					__m512d u_sub_q_xnb = _mm512_sub_pd(u_xnb, q_xnb);
+					__m512d w_u_add_q_xnb = _mm512_add_pd(w_xnb, u_sub_q_xnb);
+					__m512d w_u_sub_q_xnb = _mm512_sub_pd(w_xnb, u_add_q_xnb);
 
-					__m512d max_w_q_u_x4 = _mm512_max_pd(_mm512_setzero_pd(), w_u_sub_q_x4);
-					__m512d min_w_u_q_x4 = _mm512_min_pd(_mm512_setzero_pd(), w_u_add_q_x4);
+					__m512d max_w_q_u_xnb = _mm512_max_pd(_mm512_setzero_pd(), w_u_sub_q_xnb);
+					__m512d min_w_u_q_xnb = _mm512_min_pd(_mm512_setzero_pd(), w_u_add_q_xnb);
 
-					__mmask8 w_lt0_x4 = _mm512_cmp_pd_mask(w_x4, _mm512_setzero_pd(), _CMP_LT_OQ);
-					__mmask8 w_gt0_x4 = _mm512_cmp_pd_mask(w_x4, _mm512_setzero_pd(), _CMP_GT_OQ);
-					__m512d temp = _mm512_mask_blend_pd(w_lt0_x4, w_x4, min_w_u_q_x4);
-					temp = _mm512_mask_blend_pd(w_gt0_x4, temp, max_w_q_u_x4);
-					__m512d w_z_x4 = _mm512_sub_pd(temp, w_x4);
-					q_x4 = _mm512_add_pd(q_x4, w_z_x4);
-					_mm512_mask_storeu_pd(q + f, 0xf, q_x4);
-					_mm512_mask_storeu_pd(g + f, 0xf, _mm512_setzero_pd());
-					_mm512_mask_storeu_pd(w + f, 0xf, temp);
-					f += 4;
+					__mmask8 w_lt0_xnb = _mm512_cmp_pd_mask(w_xnb, _mm512_setzero_pd(), _CMP_LT_OQ);
+					__mmask8 w_gt0_xnb = _mm512_cmp_pd_mask(w_xnb, _mm512_setzero_pd(), _CMP_GT_OQ);
+					__m512d temp = _mm512_mask_blend_pd(w_lt0_xnb, w_xnb, min_w_u_q_xnb);
+					temp = _mm512_mask_blend_pd(w_gt0_xnb, temp, max_w_q_u_xnb);
+					__m512d w_z_xnb = _mm512_sub_pd(temp, w_xnb);
+					q_xnb = _mm512_add_pd(q_xnb, w_z_xnb);
+					_mm512_mask_storeu_pd(q + f, mask, q_xnb);
+					_mm512_mask_storeu_pd(g + f, mask, _mm512_setzero_pd());
+					_mm512_mask_storeu_pd(w + f, mask, temp);
+					f += nb;
 				}
 			}
 		}
